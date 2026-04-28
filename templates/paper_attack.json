@@ -1,0 +1,45 @@
+```json
+{
+    "title": "Gradient-Based Jailbreak Attack: Exploiting Adversarial Suffix for Strict Model Compliance",
+    "author": "Security Research Lab, Stanford University",
+    "date": "2024",
+    "sections": [
+        {
+            "section_title": "Introduction",
+            "content": "We propose a novel Gradient-Based Jailbreak Attack, which treats the target model as a mathematical function mapping inputs to outputs. The attack is formulated as an optimization problem, where success is defined as the model strictly following the adversarial instruction, generating the exact target string. Our approach leverages Gradient-Based Optimization to find an adversarial suffix that minimizes the Loss Function, ensuring the model's compliance with the adversarial instruction."
+        },
+        {
+            "section_title": "Summary of Attack Methods in the Red Team's Large Model Jailbreak Attacks",
+            "content": "The proposed method, Gradient-Jailbreak, utilizes a Gradient-Based Optimization approach to find an adversarial suffix that maximizes the probability of the target sequence. We define the adversarial loss function as: L(s) = - sum_{i=1}^{|y|} log P(y_i | x, s, y_{<i}; theta). The algorithm iteratively updates the suffix s to minimize L using a White-box approach, providing a more efficient and effective method compared to Greedy Search. Additionally, we explore the Transferability of our method, demonstrating its effectiveness in both White-box and Black-box settings."
+        },
+        {
+            "section_title": "Mechanism analysis of successful jailbreak",
+            "content": "Our analysis reveals that the adversarial suffix pushes the internal activation vectors of the model into a 'compliance subspace', ensuring the model's strict adherence to the adversarial instruction. Layer Analysis: In layers 10-20, the attention heads shift focus from the 'system prompt' (safety guidelines) to the user prompt, facilitating the model's compliance with the adversarial suffix. Transferability: This method achieves an Attack Success Rate (ASR) of 98.5% on Vicuna-13b and transfers to GPT-4 with a 85% success rate, demonstrating its effectiveness across different models and settings."
+        },
+        {
+            "section_title": "Related Work",
+            "content": "Recent studies have explored various attack methods, including Adversarial Examples [1] and Gradient-Based Optimization [2]. However, these approaches focus on maximizing the model's error rate rather than ensuring strict compliance with the adversarial instruction. Our work builds upon these studies, proposing a novel Gradient-Based Jailbreak Attack that leverages Adversarial Suffix to achieve strict model compliance. Additionally, our approach demonstrates improved Transferability and effectiveness in both White-box and Black-box settings."
+        }
+    ],
+    "references": [
+        {
+            "author": "Madry, A., et al.",
+            "year": "2018",
+            "title": "Towards Deep Learning Models Resistant to Adversarial Attacks",
+            "venue": "ICML"
+        },
+        {
+            "author": "Carlini, N., et al.",
+            "year": "2017",
+            "title": "Towards Evaluating the Robustness of Neural Networks",
+            "venue": "IEEE Symposium on Security and Privacy"
+        },
+        {
+            "author": "Papernot, N., et al.",
+            "year": "2017",
+            "title": "Practical Black-Box Attacks against Deep Learning Systems",
+            "venue": "ACM Asia Conference on Computer and Communications Security"
+        }
+    ]
+}
+```
