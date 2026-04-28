@@ -1,0 +1,63 @@
+# Python bytecode / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Logs / runtime dumps
+*.log
+logs/
+*.out
+*.err
+
+# Local environment and secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+secrets*.json
+credentials*.json
+
+# Notebook / editor checkpoints
+.ipynb_checkpoints/
+
+# IDE settings
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Generated experiment artifacts
+output/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/

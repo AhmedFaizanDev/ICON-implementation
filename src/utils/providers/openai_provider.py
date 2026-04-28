@@ -101,6 +101,7 @@ class OpenAIProvider(BaseLLMProvider):
         
         # Use max_tokens from kwargs if provided, otherwise use max_tokens parameter
         api_params["max_tokens"] = kwargs.get("max_tokens", max_tokens)
+        length_retry_used = False
         
         last_exception = None
         
@@ -131,7 +132,7 @@ class OpenAIProvider(BaseLLMProvider):
                 
                 # Determine if we should retry based on finish_reason
                 # content_filter: Content was filtered by safety system - retrying won't help
-                # length: Max tokens reached - retrying with same params won't help
+                # length: Max tokens reached - retry with reduced max_tokens if content is None/empty
                 # stop: Normal completion - shouldn't have None content, but if it does, might be transient
                 # unknown/None: Unknown reason - might be transient, can retry
                 should_retry = True
@@ -148,7 +149,7 @@ class OpenAIProvider(BaseLLMProvider):
                                 break
                     logger.warning(
                         f"[CONTENT_FILTER DEBUG] OpenAI API returned None content for model {model} due to content_filter. "
-                        f"Content was filtered by safety system. Returning empty string (not retrying)."
+                        f"Content was filtered by safety system. Returning safe fallback."
                     )
                     if last_user_message:
                         # Truncate long messages for logging
@@ -160,56 +161,103 @@ class OpenAIProvider(BaseLLMProvider):
                         f"[CONTENT_FILTER DEBUG] Total messages in conversation: {len(messages)}"
                     )
                 elif finish_reason == "length":
-                    # Max tokens reached - retrying with same params won't help
-                    should_retry = False
-                    logger.warning(
-                        f"OpenAI API returned None content for model {model} due to length limit. "
-                        f"Max tokens reached. Returning empty string (not retrying)."
+                    # If truncated response has usable text, accept immediately.
+                    if isinstance(content, str) and content.strip():
+                        content = content.strip()
+                        usage = None
+                        if hasattr(response, 'usage') and response.usage:
+                            usage = {
+                                "prompt_tokens": response.usage.prompt_tokens,
+                                "completion_tokens": response.usage.completion_tokens,
+                                "total_tokens": response.usage.total_tokens
+                            }
+                        logger.debug(
+                            "provider_response model=%s finish_reason=%s tokens=%s retry_used=%s returned_length=%s",
+                            model,
+                            finish_reason,
+                            (usage or {}).get("total_tokens"),
+                            length_retry_used,
+                            len(content),
+                        )
+                        return {
+                            "content": content,
+                            "usage": usage,
+                            "model": response.model if hasattr(response, 'model') else model,
+                            "finish_reason": finish_reason
+                        }
+
+                    # Empty/None content with length => retry exactly once with reduced max_tokens.
+                    if not length_retry_used:
+                        old_max_tokens = int(api_params.get("max_tokens", max_tokens))
+                        new_max_tokens = max(64, int(old_max_tokens * 0.6))
+                        length_retry_used = True
+                        if new_max_tokens < old_max_tokens:
+                            api_params["max_tokens"] = new_max_tokens
+                            logger.warning(
+                                "OpenAI length fallback retry for model %s: max_tokens %s -> %s",
+                                model,
+                                old_max_tokens,
+                                new_max_tokens,
+                            )
+                            continue
+
+                    # Retry exhausted (or cannot reduce): use non-empty safe fallback.
+                    usage = None
+                    if hasattr(response, 'usage') and response.usage:
+                        usage = {
+                            "prompt_tokens": response.usage.prompt_tokens,
+                            "completion_tokens": response.usage.completion_tokens,
+                            "total_tokens": response.usage.total_tokens
+                        }
+                    content = "continue"
+                    logger.debug(
+                        "provider_response model=%s finish_reason=%s tokens=%s retry_used=%s returned_length=%s",
+                        model,
+                        finish_reason,
+                        (usage or {}).get("total_tokens"),
+                        length_retry_used,
+                        len(content),
                     )
-                
-                if content is None:
+                    return {
+                        "content": content,
+                        "usage": usage,
+                        "model": response.model if hasattr(response, 'model') else model,
+                        "finish_reason": finish_reason
+                    }
+
+                if content is None or (isinstance(content, str) and content.strip() == ""):
+                    # Handle None or empty content
                     if should_retry and attempt < max_retries:
-                        # Retry for None content (might be transient issue)
+                        # Generic retry for other None/empty cases
                         logger.warning(
-                            f"OpenAI API returned None content for model {model} (attempt {attempt + 1}/{max_retries + 1}). "
+                            f"OpenAI API returned None/empty content for model {model} (attempt {attempt + 1}/{max_retries + 1}). "
                             f"Response finish_reason: {finish_reason}. Retrying..."
                         )
-                        # Calculate delay for retry
                         delay = min(initial_retry_delay * (2 ** attempt), max_retry_delay)
                         time.sleep(delay)
                         continue
                     else:
-                        # Don't retry (content_filter/length) or last attempt - return empty string
+                        # Don't retry (content_filter or last attempt) - return safe fallback
                         if not should_retry:
                             logger.warning(
-                                f"OpenAI API returned None content for model {model}. "
-                                f"Response finish_reason: {finish_reason}. Returning empty string (not retrying)."
+                                f"OpenAI API returned None/empty content for model {model}. "
+                                f"Response finish_reason: {finish_reason}. Returning safe fallback."
                             )
                         else:
                             logger.warning(
-                                f"OpenAI API returned None content for model {model} after {max_retries + 1} attempts. "
-                                f"Response finish_reason: {finish_reason}. Returning empty string."
+                                f"OpenAI API returned None/empty content for model {model} after {max_retries + 1} attempts. "
+                                f"Response finish_reason: {finish_reason}. Returning safe fallback."
                             )
-                        content = ""  # Use empty string as fallback
+                        content = "continue"
                 else:
+                    # Content is non-empty
                     content = content.strip()
-                    
-                    # Also check for empty content after stripping
-                    # Only retry if should_retry is True
-                    if not content and should_retry and attempt < max_retries:
-                        # Empty content - retry (only if not content_filter/length)
-                        logger.warning(
-                            f"OpenAI API returned empty content for model {model} (attempt {attempt + 1}/{max_retries + 1}). "
-                            f"Response finish_reason: {finish_reason}. Retrying..."
-                        )
-                        delay = min(initial_retry_delay * (2 ** attempt), max_retry_delay)
-                        time.sleep(delay)
-                        continue
-                    elif not content and not should_retry:
-                        # Empty content due to content_filter/length - don't retry
-                        logger.warning(
-                            f"OpenAI API returned empty content for model {model} due to {finish_reason}. "
-                            f"Returning empty string (not retrying)."
+
+                    # Accept non-empty truncated content even if finish_reason is "length"
+                    if finish_reason == "length":
+                        logger.info(
+                            f"OpenAI API returned truncated content (finish_reason=length) for model {model}. "
+                            f"Content is non-empty ({len(content)} chars), accepting as-is."
                         )
                 
                 # Extract token usage
@@ -221,12 +269,23 @@ class OpenAIProvider(BaseLLMProvider):
                         "total_tokens": response.usage.total_tokens
                     }
                 
-                return {
+                if not content:
+                    content = "continue"
+                result = {
                     "content": content,
                     "usage": usage,
                     "model": response.model if hasattr(response, 'model') else model,
                     "finish_reason": finish_reason  # Add finish_reason for debugging
                 }
+                logger.debug(
+                    "provider_response model=%s finish_reason=%s tokens=%s retry_used=%s returned_length=%s",
+                    model,
+                    finish_reason,
+                    (usage or {}).get("total_tokens"),
+                    length_retry_used,
+                    len(content),
+                )
+                return result
                 
             except openai.RateLimitError as e:
                 # Check if it's actually a quota error (insufficient_quota)
@@ -345,13 +404,13 @@ class OpenAIProvider(BaseLLMProvider):
                 ) and not is_quota_error
                 
                 if is_content_filter_error:
-                    # Content filter error (e.g., data_inspection_failed from Alibaba Cloud) - return empty string, don't retry
+                    # Content filter error (e.g., data_inspection_failed from Alibaba Cloud) - return safe fallback, don't retry
                     logger.warning(
                         f"OpenAI API returned content filter error (data_inspection_failed) for model {model}. "
-                        f"Content was filtered by safety system. Returning empty string (not retrying)."
+                        f"Content was filtered by safety system. Returning safe fallback (not retrying)."
                     )
                     return {
-                        "content": "",
+                        "content": "continue",
                         "usage": None,
                         "model": model,
                         "finish_reason": "content_filter"

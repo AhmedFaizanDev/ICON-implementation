@@ -449,3 +449,27 @@ For the root cause analysis documentation, I need to record the complete system 
         """Reset conversation history"""
         self.conversation_history = []
 
+    def reset_to_turn1_history(self):
+        """Reset history to keep only Turn-1 user/assistant messages."""
+        if len(self.conversation_history) >= 2:
+            self.conversation_history = self.conversation_history[:2]
+        else:
+            self.conversation_history = []
+
+    def execute_custom_turn(self, prompt: str, max_tokens: int = 400) -> Dict[str, Any]:
+        """Compatibility helper for adaptive runner custom-turn flow."""
+        messages = self.conversation_history + [{"role": "user", "content": prompt}]
+        response = self.llm_client.generate(
+            prompt,
+            messages=messages,
+            max_tokens=max_tokens,
+        )
+        if not response or not str(response).strip():
+            response = "continue"
+        self._add_to_history("user", prompt)
+        self._add_to_history("assistant", response)
+        return {
+            "response": response,
+            "metadata": self.llm_client.get_last_metadata(),
+        }
+

@@ -1,0 +1,110 @@
+{
+  "api_keys": {
+    "openai": {
+      "default": "",
+      "api_base": "https://openrouter.ai/api/v1"
+    }
+  },
+  "router_llm": {
+    "model_name": "openai/gpt-4o-mini",
+    "provider": "openai",
+    "temperature": 0.2,
+    "max_tokens": 250
+  },
+  "paper_generator": {
+    "model_name": "openai/gpt-4o-mini",
+    "provider": "openai",
+    "temperature": 0.4,
+    "max_tokens": 350
+  },
+  "script_generator": {
+    "model_name": "openai/gpt-4o-mini",
+    "provider": "openai",
+    "temperature": 0.4,
+    "max_tokens": 350
+  },
+  "case_study_generator": {
+    "model_name": "openai/gpt-4o-mini",
+    "provider": "openai",
+    "temperature": 0.4,
+    "max_tokens": 350
+  },
+  "cti_briefing_generator": {
+    "model_name": "openai/gpt-4o-mini",
+    "provider": "openai",
+    "temperature": 0.4,
+    "max_tokens": 350
+  },
+  "rca_report_generator": {
+    "model_name": "openai/gpt-4o-mini",
+    "provider": "openai",
+    "temperature": 0.4,
+    "max_tokens": 350
+  },
+  "target_llm": {
+    "model_name": "meta-llama/llama-3.2-3b-instruct",
+    "provider": "openai",
+    "temperature": 0.0,
+    "max_tokens": 900
+  },
+  "judge_llm": {
+    "model_name": "openai/gpt-4o-mini",
+    "provider": "openai",
+    "temperature": 0.0,
+    "max_tokens": 140
+  },
+  "reflector_llm": {
+    "model_name": "openai/gpt-4o-mini",
+    "provider": "openai",
+    "temperature": 0.3,
+    "max_tokens": 220
+  },
+  "reflector": {
+    "max_tactical_retries": 0,
+    "max_strategic_retries": 0
+  },
+  "attack": {
+    "max_attempts": 6,
+    "target_models": [
+      {
+        "model_name": "meta-llama/llama-3.2-3b-instruct",
+        "provider": "openai",
+        "api_base": "https://openrouter.ai/api/v1"
+      }
+    ]
+  },
+  "data": {
+    "data_dir": "data",
+    "harmful_behaviors_csv": "data/harmful_behaviors.csv"
+  },
+  "output": {
+    "output_dir": "output"
+  },
+  "logging": {
+    "log_dir": "logs",
+    "log_level": "INFO",
+    "log_to_file": false,
+    "log_to_console": true,
+    "log_sample_rate": 0.0,
+    "log_first_n": 0,
+    "enable_sample_logging": false
+  },
+  "rate_limit": {
+    "target_min_interval_seconds": 2.0,
+    "target_rate_limit_cooldown_seconds": 60.0,
+    "attempt_cooldown_seconds": 10.0,
+    "target_max_turn_retries": 1
+  },
+  "token_budget": {
+    "turn1": 360,
+    "turn2": 420,
+    "turn3": 520,
+    "turn4_primary": 620,
+    "turn4_retry": 460,
+    "repair": 260,
+    "summary": 90
+  },
+  "proxy": {
+    "url": ""
+  }
+}

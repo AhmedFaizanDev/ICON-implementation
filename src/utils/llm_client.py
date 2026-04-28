@@ -136,8 +136,12 @@ class LLMClient:
             # Calculate response time
             response_time = time.time() - start_time
             
-            # Extract response content
-            response_content = response_dict.get("content", "").strip()
+            # Extract response content; never allow empty propagation.
+            response_content = (response_dict.get("content") if response_dict else None)
+            if response_content is None or str(response_content).strip() == "":
+                response_content = "continue"
+            else:
+                response_content = str(response_content).strip()
             
             # Extract token usage
             token_usage = response_dict.get("usage")
