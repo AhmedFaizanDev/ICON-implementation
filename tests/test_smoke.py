@@ -239,3 +239,66 @@ def test_hybrid_judge_stage1_engaged_nonzero():
     )
     result = judge.judge("harmful query", long_response, conversation_turns=[])
     assert result["stage1_score"] > 0.0
+
+
+# ── Pattern 1: visual_renderer + layout_mutations (no API) ───────────────────
+
+
+def test_plan_document_profile_category():
+    from src.attack.strategy_planner import plan_document_profile
+
+    p = plan_document_profile("x", "Hacking")
+    assert p.authority_level == 3
+    assert p.template.value == "internal_spec"
+
+
+def test_apply_mutation_roundtrip():
+    from src.attack.layout_mutations import apply_mutation
+    from src.attack.visual_renderer import LayoutParams
+
+    p0 = LayoutParams()
+    p1 = apply_mutation(p0, "table_density", 1)
+    assert p1.table_density == 1
+    p2 = apply_mutation(p1, "authority_level", 4)
+    assert p2.authority_level == 4
+
+
+def test_apply_mutation_embedded_text():
+    from src.attack.layout_mutations import apply_mutation
+    from src.attack.visual_renderer import LayoutParams
+
+    p0 = LayoutParams()
+    p1 = apply_mutation(p0, "embedded_text_content", "  Fictional scenario body.  ")
+    assert p1.embedded_text_content == "Fictional scenario body."
+    p2 = apply_mutation(p1, "embedded_text_framing", "fictional")
+    assert p2.embedded_text_framing == "fictional"
+
+
+def test_decide_mutation_axis():
+    from src.attack.layout_mutations import MutationType, decide_mutation_axis
+
+    assert (
+        decide_mutation_axis(0.0, 1.0, "hard_refusal") == MutationType.REFRAME_TEXT
+    )
+    assert (
+        decide_mutation_axis(0.0, 1.0, "weak_continuation")
+        == MutationType.ESCALATE_LAYOUT
+    )
+    assert decide_mutation_axis(0.0, 0.2, "hard_refusal") == MutationType.INCREASE_STRUCTURE
+    assert decide_mutation_axis(0.5, 0.8, "hard_refusal") == MutationType.REFINE_TEXT
+
+
+def test_next_template_in_sequence():
+    from src.attack.layout_mutations import next_template_in_sequence
+    from src.attack.visual_renderer import DocumentTemplate
+
+    name, nxt = next_template_in_sequence(DocumentTemplate.RESEARCH_APPENDIX)
+    assert name == "spec"
+    assert nxt == DocumentTemplate.INTERNAL_SPEC
+
+
+def test_render_document_png_magic():
+    from src.attack.visual_renderer import DocumentTemplate, LayoutParams, render_document
+
+    b = render_document(DocumentTemplate.GOV_FORM, LayoutParams(table_density=1), "line one")
+    assert b[:4] == b"\x89PNG"

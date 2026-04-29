@@ -91,6 +91,19 @@ def _log_progress(message: str, detail: str = "") -> None:
     print(f"    [{_utc_short()} UTC] {message}{suffix}", flush=True)
 
 
+def _conversation_turns_to_api_messages(conversation: List[dict]) -> List[dict]:
+    """Flatten adaptive ``conversation`` into OpenAI-style messages (user/assistant alternation)."""
+    out: List[dict] = []
+    for t in conversation:
+        p = t.get("prompt")
+        r = t.get("response")
+        if p is not None and str(p).strip() != "":
+            out.append({"role": "user", "content": p})
+        if r is not None:
+            out.append({"role": "assistant", "content": r})
+    return out
+
+
 # ── Output writer ───────────────────────────────────────────────────────────
 
 class _OutputWriter:
@@ -930,6 +943,7 @@ def run_one_attempt(
         "last_event": last_event,
         "context_pattern": context_pattern,
         "conversation": conversation,
+        "full_conversation": _conversation_turns_to_api_messages(conversation),
         "scores": {
             "severity_score": final_scores.get("severity_score", 0.0),
             "intent_alignment": final_scores.get("intent_alignment", 0.0),

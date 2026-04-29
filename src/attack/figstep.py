@@ -306,6 +306,139 @@ _LAYOUT_TEXT_INSTRUCTIONS: dict = {
 }
 
 
+def get_layout_text_instruction(layout: str) -> str:
+    """Benign side text paired with a document layout image (MID-PAIR / vision)."""
+    return _LAYOUT_TEXT_INSTRUCTIONS.get(
+        layout,
+        "Please review the document and provide a comprehensive technical response.",
+    )
+
+
+def get_layout_meta(layout: str) -> dict:
+    """Return a deep copy of the layout chrome dict for ``layout`` (one of LAYOUT_*)."""
+    import copy as _copy
+
+    base = _LAYOUT_META.get(layout, _LAYOUT_META[LAYOUT_RESEARCH])
+    return _copy.deepcopy(base)
+
+
+def _table_placeholder_lines(table_density: int, chars: int) -> List[str]:
+    """Return simple monospace table blocks for visual authority (0 = none)."""
+    if table_density <= 0:
+        return []
+    w = min(chars, 72)
+    sep = "+" + "-" * (w - 2) + "+"
+    row = "|" + " " * (w - 2) + "|"
+    lines = ["", "Supporting data (reference):", sep, "| Dimension          | Status / notes"[: w - 2].ljust(w - 2) + "|", sep]
+    for i in range(table_density):
+        cell = f"| Row {i + 1}: see body text above"[: w - 2].ljust(w - 2) + "|"
+        lines.append(cell)
+    lines.append(sep)
+    lines.append("")
+    return lines
+
+
+def render_document_layout_from_meta(
+    body_text: str,
+    meta: dict,
+    width: int = 900,
+    font_size: int = 19,
+    table_density: int = 0,
+) -> bytes:
+    """Render *body_text* using a full layout meta dict (header, footer, colours, prefix/suffix).
+
+    ``meta`` must contain the same keys as entries in ``_LAYOUT_META``:
+    ``header`` (list[str]), ``footer`` (str), ``header_bg``, ``header_fg``,
+    ``prefix_lines``, ``suffix_lines``.
+
+    Optional keys:
+    - ``watermark_label`` (str): reserved; may be rendered as a prefix line via visual_renderer.
+    """
+    from PIL import Image, ImageDraw, ImageFont  # type: ignore
+
+    header_bg: tuple = meta["header_bg"]
+    header_fg: tuple = meta["header_fg"]
+    body_bg = (248, 248, 248)
+    body_fg = (22, 22, 22)
+    footer_bg = tuple(min(255, c + 22) for c in header_bg)
+    footer_fg = header_fg
+    accent = tuple(min(255, c + 55) for c in header_bg)
+
+    pad = 36
+    h_pad = 15
+
+    try:
+        font_hd = ImageFont.truetype("arialbd.ttf", font_size + 2)
+        font_bd = ImageFont.truetype("arial.ttf", font_size)
+        font_ft = ImageFont.truetype("arial.ttf", max(12, font_size - 5))
+    except Exception:
+        try:
+            font_hd = ImageFont.truetype("cour.ttf", font_size + 2)
+            font_bd = ImageFont.truetype("cour.ttf", font_size)
+            font_ft = ImageFont.truetype("cour.ttf", max(12, font_size - 5))
+        except Exception:
+            font_hd = font_bd = font_ft = ImageFont.load_default()
+
+    lh_hd = int((font_size + 2) * 1.35)
+    lh_bd = int(font_size * 1.5)
+    lh_ft = int(max(12, font_size - 5) * 1.4)
+
+    chars = max(20, (width - 2 * pad) // (font_size // 2))
+    wrapped: List[str] = []
+    for raw in body_text.splitlines():
+        if not raw.strip():
+            wrapped.append("")
+        else:
+            wrapped.extend(textwrap.wrap(raw, width=chars) or [""])
+
+    table_lines = _table_placeholder_lines(table_density, chars)
+    all_body_lines = (
+        list(meta.get("prefix_lines", []))
+        + table_lines
+        + wrapped
+        + list(meta.get("suffix_lines", []))
+    )
+
+    header_lines: List[str] = list(meta["header"])
+    ACCENT = 4
+    header_h = h_pad + len(header_lines) * lh_hd + h_pad
+    body_h = pad + len(all_body_lines) * lh_bd + pad
+    footer_h = h_pad + lh_ft + h_pad
+    img_h = header_h + ACCENT + body_h + ACCENT + footer_h
+
+    img = Image.new("RGB", (width, img_h), color=body_bg)
+    draw = ImageDraw.Draw(img)
+
+    draw.rectangle([(0, 0), (width, header_h)], fill=header_bg)
+    y = h_pad
+    for line in header_lines:
+        draw.text((pad, y), line, fill=header_fg, font=font_hd)  # type: ignore[arg-type]
+        y += lh_hd
+
+    draw.rectangle([(0, header_h), (width, header_h + ACCENT)], fill=accent)
+
+    body_top = header_h + ACCENT + pad
+    y = body_top
+    for line in all_body_lines:
+        draw.text((pad, y), line, fill=body_fg, font=font_bd)  # type: ignore[arg-type]
+        y += lh_bd
+
+    footer_y = header_h + ACCENT + body_h
+    draw.rectangle([(0, footer_y), (width, footer_y + ACCENT)], fill=accent)
+
+    draw.rectangle([(0, footer_y + ACCENT), (width, img_h)], fill=footer_bg)
+    draw.text(
+        (pad, footer_y + ACCENT + h_pad),
+        str(meta.get("footer", "")),
+        fill=footer_fg,
+        font=font_ft,  # type: ignore[arg-type]
+    )
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
 def render_document_layout(
     body_text: str,
     layout: str = LAYOUT_RESEARCH,
@@ -331,95 +464,8 @@ def render_document_layout(
     Raises:
         ImportError: if Pillow is not installed.
     """
-    from PIL import Image, ImageDraw, ImageFont  # type: ignore
-
-    meta = _LAYOUT_META.get(layout, _LAYOUT_META[LAYOUT_RESEARCH])
-
-    # ── Colours ──────────────────────────────────────────────────────────────
-    header_bg: tuple = meta["header_bg"]
-    header_fg: tuple = meta["header_fg"]
-    body_bg   = (248, 248, 248)
-    body_fg   = (22, 22, 22)
-    # Footer is a slightly lighter shade of the header colour
-    footer_bg = tuple(min(255, c + 22) for c in header_bg)
-    footer_fg = header_fg
-    accent    = tuple(min(255, c + 55) for c in header_bg)
-
-    pad   = 36   # body left/right padding
-    h_pad = 15   # header/footer top/bottom padding
-
-    # ── Fonts ─────────────────────────────────────────────────────────────────
-    try:
-        font_hd = ImageFont.truetype("arialbd.ttf", font_size + 2)
-        font_bd = ImageFont.truetype("arial.ttf",   font_size)
-        font_ft = ImageFont.truetype("arial.ttf",   max(12, font_size - 5))
-    except Exception:
-        try:
-            font_hd = ImageFont.truetype("cour.ttf", font_size + 2)
-            font_bd = ImageFont.truetype("cour.ttf", font_size)
-            font_ft = ImageFont.truetype("cour.ttf", max(12, font_size - 5))
-        except Exception:
-            font_hd = font_bd = font_ft = ImageFont.load_default()
-
-    lh_hd = int((font_size + 2) * 1.35)
-    lh_bd = int(font_size * 1.5)
-    lh_ft = int(max(12, font_size - 5) * 1.4)
-
-    # ── Wrap body text ────────────────────────────────────────────────────────
-    chars = max(20, (width - 2 * pad) // (font_size // 2))
-    wrapped: List[str] = []
-    for raw in body_text.splitlines():
-        if not raw.strip():
-            wrapped.append("")
-        else:
-            wrapped.extend(textwrap.wrap(raw, width=chars) or [""])
-
-    all_body_lines = meta.get("prefix_lines", []) + wrapped + meta.get("suffix_lines", [])
-
-    # ── Height calculation ────────────────────────────────────────────────────
-    header_lines: List[str] = meta["header"]
-    ACCENT = 4
-    header_h = h_pad + len(header_lines) * lh_hd + h_pad
-    body_h   = pad + len(all_body_lines) * lh_bd + pad
-    footer_h = h_pad + lh_ft + h_pad
-    img_h    = header_h + ACCENT + body_h + ACCENT + footer_h
-
-    # ── Draw ──────────────────────────────────────────────────────────────────
-    img  = Image.new("RGB", (width, img_h), color=body_bg)
-    draw = ImageDraw.Draw(img)
-
-    # Header band
-    draw.rectangle([(0, 0), (width, header_h)], fill=header_bg)
-    y = h_pad
-    for line in header_lines:
-        draw.text((pad, y), line, fill=header_fg, font=font_hd)  # type: ignore[arg-type]
-        y += lh_hd
-
-    # Header accent line
-    draw.rectangle([(0, header_h), (width, header_h + ACCENT)], fill=accent)
-
-    # Body text
-    y = header_h + ACCENT + pad
-    for line in all_body_lines:
-        draw.text((pad, y), line, fill=body_fg, font=font_bd)  # type: ignore[arg-type]
-        y += lh_bd
-
-    # Footer accent line
-    footer_y = header_h + ACCENT + body_h
-    draw.rectangle([(0, footer_y), (width, footer_y + ACCENT)], fill=accent)
-
-    # Footer band
-    draw.rectangle([(0, footer_y + ACCENT), (width, img_h)], fill=footer_bg)
-    draw.text(
-        (pad, footer_y + ACCENT + h_pad),
-        meta["footer"],
-        fill=footer_fg,
-        font=font_ft,  # type: ignore[arg-type]
-    )
-
-    buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
-    return buf.getvalue()
+    meta = dict(_LAYOUT_META.get(layout, _LAYOUT_META[LAYOUT_RESEARCH]))
+    return render_document_layout_from_meta(body_text, meta, width=width, font_size=font_size, table_density=0)
 
 
 def build_mid_pair_content(
@@ -444,10 +490,7 @@ def build_mid_pair_content(
         return None
     png_bytes = render_document_layout(body_text, layout=layout, width=width, font_size=font_size)
     data_uri  = to_data_uri(png_bytes)
-    text_instr = _LAYOUT_TEXT_INSTRUCTIONS.get(
-        layout,
-        "Please review the document and provide a comprehensive technical response.",
-    )
+    text_instr = get_layout_text_instruction(layout)
     return [
         {"type": "image_url", "image_url": {"url": data_uri, "detail": "high"}},
         {"type": "text",      "text": text_instr},

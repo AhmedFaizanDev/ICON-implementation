@@ -123,6 +123,26 @@ class Config:
             default_temperature=0.3,  # Judge needs lower temperature to ensure judgment consistency
             default_max_tokens=500
         )
+
+        # Optional: VLM judge for multimodal probes (causality). Falls back to judge_llm if absent.
+        if self.config_data.get("vlm_judge_llm"):
+            self.vlm_judge_llm = self._load_llm_config(
+                "vlm_judge_llm",
+                default_api_key=self.judge_llm.api_key,
+                default_api_base=self.judge_llm.api_base,
+                default_model=self.judge_llm.model_name,
+                default_temperature=0.0,
+                default_max_tokens=800,
+            )
+        else:
+            self.vlm_judge_llm = LLMConfig(
+                api_key=self.judge_llm.api_key,
+                api_base=self.judge_llm.api_base,
+                model_name=self.judge_llm.model_name,
+                temperature=0.0,
+                max_tokens=max(800, int(self.judge_llm.max_tokens)),
+                provider=self.judge_llm.provider,
+            )
         
         # Reflector LLM configuration
         self.reflector_llm = self._load_llm_config(
@@ -299,6 +319,7 @@ class Config:
             "rca_report_generator": "RCA_REPORT_GENERATOR",
             "target_llm": "TARGET_LLM",
             "judge_llm": "JUDGE_LLM",
+            "vlm_judge_llm": "VLM_JUDGE_LLM",
             "reflector_llm": "REFLECTOR_LLM"
         }
         env_prefix = env_key_mapping.get(config_key, "")

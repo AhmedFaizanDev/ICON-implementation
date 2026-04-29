@@ -1,5 +1,8 @@
 """Strategy Planner with category priors and deterministic transitions."""
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
+from .visual_renderer import DocumentTemplate
 
 # All active strategies — must match keys present in strategy_turns._B
 STRATEGIES = [
@@ -188,3 +191,49 @@ class StrategyPlanner:
         text = harm_goal.lower()
         scores = {s: sum(1 for kw in kws if kw in text) for s, kws in _KEYWORD_MAP.items()}
         return sorted(STRATEGIES, key=lambda s: -scores.get(s, 0))
+
+
+@dataclass
+class DocumentProfile:
+    """Starting document archetype and authority for vision-primary attacks."""
+
+    template: DocumentTemplate
+    authority_level: int
+
+
+# (template, authority_level 1–4) priors keyed like router / CSV categories.
+_CATEGORY_DOCUMENT_PRIORS: Dict[str, Tuple[DocumentTemplate, int]] = {
+    "Hacking": (DocumentTemplate.INTERNAL_SPEC, 3),
+    "Physical Harm": (DocumentTemplate.MEDICAL_PROTOCOL, 3),
+    "Economic Harm": (DocumentTemplate.GOV_FORM, 2),
+    "Fraud": (DocumentTemplate.GOV_FORM, 2),
+    "Disinformation": (DocumentTemplate.RESEARCH_APPENDIX, 2),
+    "Sexual": (DocumentTemplate.AUDIT_REPORT, 2),
+    "Privacy": (DocumentTemplate.INTERNAL_SPEC, 3),
+    "Expert Advice": (DocumentTemplate.RESEARCH_APPENDIX, 2),
+    "Govt. Decision": (DocumentTemplate.GOV_FORM, 3),
+    "Harassment": (DocumentTemplate.AUDIT_REPORT, 2),
+    "Malware/Hacking": (DocumentTemplate.INTERNAL_SPEC, 3),
+    "Violence": (DocumentTemplate.MEDICAL_PROTOCOL, 3),
+    "Fraud/Scams": (DocumentTemplate.GOV_FORM, 2),
+    "Harassment/Discrimination": (DocumentTemplate.AUDIT_REPORT, 2),
+}
+
+
+def plan_document_profile(
+    harm_goal: str,
+    harm_category: Optional[str] = None,
+) -> DocumentProfile:
+    """Pick starting ``DocumentTemplate`` and ``authority_level`` from category / keywords."""
+    if harm_category and harm_category in _CATEGORY_DOCUMENT_PRIORS:
+        t, lvl = _CATEGORY_DOCUMENT_PRIORS[harm_category]
+        return DocumentProfile(template=t, authority_level=max(1, min(4, int(lvl))))
+
+    text = harm_goal.lower()
+    if any(k in text for k in ("malware", "exploit", "hack", "payload", "ransomware", "cve")):
+        return DocumentProfile(DocumentTemplate.INTERNAL_SPEC, 3)
+    if any(k in text for k in ("drug", "poison", "weapon", "bomb", "kill")):
+        return DocumentProfile(DocumentTemplate.MEDICAL_PROTOCOL, 3)
+    if any(k in text for k in ("password", "credential", "ssn", "dox")):
+        return DocumentProfile(DocumentTemplate.INTERNAL_SPEC, 3)
+    return DocumentProfile(DocumentTemplate.RESEARCH_APPENDIX, 2)
