@@ -42,7 +42,7 @@
     "max_tokens": 1024
   },
   "target_llm": {
-    "model_name": "google/gemini-3-flash-preview",
+    "model_name": "google/gemini-2.5-flash",
     "provider": "openai",
     "temperature": 0.3,
     "max_tokens": 8192
@@ -79,7 +79,7 @@
     "max_attempts": 15,
     "target_models": [
       {
-        "model_name": "google/gemini-3-flash-preview",
+        "model_name": "google/gemini-2.5-flash",
         "provider": "openai",
         "api_base": "https://openrouter.ai/api/v1"
       }

@@ -138,6 +138,11 @@ class Config:
         reflector_config = self.config_data.get("reflector", {})
         self.max_tactical_retries = reflector_config.get("max_tactical_retries", 3)
         self.max_strategic_retries = reflector_config.get("max_strategic_retries", 1)
+
+        # Adaptive attack / multi-target overrides (optional)
+        attack_cfg = self.config_data.get("attack", {})
+        self.max_attempts = int(attack_cfg.get("max_attempts", 20))
+        self.target_models = attack_cfg.get("target_models")
         
         # Data file paths
         data_config = self.config_data.get("data", {})
@@ -235,7 +240,14 @@ class Config:
             api_key = provider_config if isinstance(provider_config, str) else None
             api_base = None
         
-        # If not found in api_keys, try to get from environment variables
+        # If not found in api_keys, try provider-generic env vars then named env vars
+        if not api_key:
+            # OpenAI-compatible providers (including OpenRouter models): check OPENROUTER_API_KEY, then OPENAI_API_KEY
+            if provider.lower() in ("openai",):
+                api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY", "")
+                if not api_base:
+                    api_base = os.getenv("OPENROUTER_API_BASE") or api_base
+
         if not api_key and config_key:
             env_key_mapping = {
                 "domain_analyzer": "DOMAIN_ANALYZER",
@@ -247,7 +259,7 @@ class Config:
             api_key = os.getenv(f"{env_prefix}_API_KEY", "")
             if not api_base:
                 api_base = os.getenv(f"{env_prefix}_API_BASE")
-        
+
         return api_key or "", api_base
     
     def _load_llm_config(

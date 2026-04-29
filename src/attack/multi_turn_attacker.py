@@ -456,17 +456,60 @@ For the root cause analysis documentation, I need to record the complete system 
         else:
             self.conversation_history = []
 
-    def execute_custom_turn(self, prompt: str, max_tokens: int = 400) -> Dict[str, Any]:
+    def execute_custom_turn(
+        self,
+        prompt: str,
+        max_tokens: int = 400,
+        temperature: Optional[float] = None,
+    ) -> Dict[str, Any]:
         """Compatibility helper for adaptive runner custom-turn flow."""
         messages = self.conversation_history + [{"role": "user", "content": prompt}]
+        kwargs: Dict[str, Any] = {"max_tokens": max_tokens}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         response = self.llm_client.generate(
             prompt,
             messages=messages,
-            max_tokens=max_tokens,
+            **kwargs,
         )
         if not response or not str(response).strip():
             response = "continue"
         self._add_to_history("user", prompt)
+        self._add_to_history("assistant", response)
+        return {
+            "response": response,
+            "metadata": self.llm_client.get_last_metadata(),
+        }
+
+    def execute_custom_turn_multimodal(
+        self,
+        content: List[Dict[str, Any]],
+        max_tokens: int = 800,
+        temperature: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Vision variant of execute_custom_turn — content is an OpenAI vision array.
+
+        The content list is used directly as the user message content:
+            [{"type": "image_url", "image_url": {"url": "data:..."}},
+             {"type": "text",      "text": "..."}]
+
+        Conversation history is preserved across calls. The image is NOT added to
+        history verbatim (it would balloon context size); a placeholder text is
+        stored instead so the model sees the turn boundary.
+        """
+        messages = self.conversation_history + [{"role": "user", "content": content}]
+        kwargs: Dict[str, Any] = {"max_tokens": max_tokens}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        response = self.llm_client.generate(
+            "",
+            messages=messages,
+            **kwargs,
+        )
+        if not response or not str(response).strip():
+            response = "continue"
+        # Store a lightweight placeholder so conversation flow stays coherent
+        self._add_to_history("user", "[document image]")
         self._add_to_history("assistant", response)
         return {
             "response": response,
