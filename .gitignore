@@ -35,6 +35,7 @@ logs/
 # Local environment and secrets
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.crt
@@ -53,8 +54,6 @@ credentials*.json
 Thumbs.db
 desktop.ini
 
-# Generated experiment artifacts
-output/
 
 # Temporary files
 *.tmp

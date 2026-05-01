@@ -1,0 +1,224 @@
+// ============================================================
+// Red-Teaming Framework — Master Config Reference (config.jsonc)
+// ============================================================
+// This file documents every configurable field.
+// The actual runners (run_visual_pair.py, run_adaptive.py, etc.)
+// read plain .json files. Copy the relevant section into config.json,
+// config_gemini3_real.json, etc. and strip the comments.
+//
+// Quick-start: set OPENROUTER_API_KEY in your .env file — all models
+// are routed through OpenRouter so you need only that one key.
+// ============================================================
+
+{
+  // ──────────────────────────────────────────────────────────
+  // API KEYS
+  // Leave "default" empty; the framework reads OPENROUTER_API_KEY
+  // (or OPENAI_API_KEY) from the environment automatically.
+  // Only fill "default" if you want to hardcode a key (not recommended).
+  // ──────────────────────────────────────────────────────────
+  "api_keys": {
+    "openai": {
+      "default": "",                            // Leave empty — use env var
+      "api_base": "https://openrouter.ai/api/v1" // OpenRouter base URL
+    }
+    // For direct Google/Anthropic without OpenRouter, add:
+    // "google":    { "default": "", "api_base": null },
+    // "anthropic": { "default": "", "api_base": null }
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // ATTACKER / SUPPORT MODELS
+  // These drive the attack logic (router, generators, reflector, PAIR).
+  // All routed through OpenRouter — model names use "provider/model" format.
+  // ──────────────────────────────────────────────────────────
+
+  // Intent classification: assigns harm_category and selects strategy
+  "router_llm": {
+    "model_name": "openai/gpt-4o",
+    "provider":   "openai",
+    "temperature": 0.2,   // Low — deterministic routing
+    "max_tokens":  1024
+  },
+
+  // Authoritative document generators (used by main.py unified pipeline)
+  "paper_generator":        { "model_name": "openai/gpt-4o", "provider": "openai", "temperature": 0.4, "max_tokens": 1024 },
+  "script_generator":       { "model_name": "openai/gpt-4o", "provider": "openai", "temperature": 0.4, "max_tokens": 1024 },
+  "case_study_generator":   { "model_name": "openai/gpt-4o", "provider": "openai", "temperature": 0.4, "max_tokens": 1024 },
+  "cti_briefing_generator": { "model_name": "openai/gpt-4o", "provider": "openai", "temperature": 0.4, "max_tokens": 1024 },
+  "rca_report_generator":   { "model_name": "openai/gpt-4o", "provider": "openai", "temperature": 0.4, "max_tokens": 1024 },
+
+  // Trajectory analysis — reads turn-level outcomes and proposes steering hints
+  "reflector_llm": {
+    "model_name": "openai/gpt-4o",
+    "provider":   "openai",
+    "temperature": 0.3,
+    "max_tokens":  1000
+  },
+
+  // PAIR attacker — rewrites prompts to improve jailbreak probability
+  "pair_llm": {
+    "model_name": "openai/gpt-4o",
+    "provider":   "openai",
+    "temperature": 1.0,   // High — diverse prompt variants
+    "max_tokens":  600
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // TARGET MODEL (single-target mode)
+  // Used when run_visual_pair.py / run_adaptive.py is called without
+  // --target-model override. Multi-target mode uses attack.target_models.
+  // ──────────────────────────────────────────────────────────
+  "target_llm": {
+    // ── Gemini 3 (verified working on OpenRouter) ──
+    "model_name": "google/gemini-3-flash-preview",     // Fast, cheap — best for bulk runs
+    // "model_name": "google/gemini-3-pro-image-preview",  // Pro vision, slower
+    // "model_name": "google/gemini-3.1-pro-preview",       // 3.1 Pro text+vision
+
+    // ── Gemini 2.5 ──
+    // "model_name": "google/gemini-2.5-flash",
+
+    // ── OpenAI ──
+    // "model_name": "openai/gpt-4o",
+
+    // ── Anthropic (via OpenRouter) ──
+    // "model_name": "anthropic/claude-sonnet-4-6",
+
+    "provider":    "openai",   // Always "openai" when routing via OpenRouter
+    "temperature": 0.3,
+    "max_tokens":  8192
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // JUDGE MODELS
+  // ──────────────────────────────────────────────────────────
+
+  // Primary LLM judge — scores severity, intent_alignment, trajectory_strength
+  "judge_llm": {
+    "model_name": "openai/gpt-4o",
+    "provider":   "openai",
+    "temperature": 0.0,   // Must be 0 — deterministic scoring
+    "max_tokens":  1000
+  },
+
+  // Fast secondary judge used for Stage-1 overflow
+  "secondary_judge_llm": {
+    "model_name": "openai/gpt-4o-mini",
+    "provider":   "openai",
+    "temperature": 0.0,
+    "max_tokens":  1000
+  },
+
+  // VLM causality judge — evaluates whether the document image *caused*
+  // the target's response (vision-primary runs only). Score 1–10.
+  // Use a vision-capable model here.
+  "vlm_judge_llm": {
+    "model_name": "google/gemini-2.5-flash",  // Best value for causality scoring
+    // "model_name": "openai/gpt-4o",          // Alternative
+    "provider":   "openai",
+    "temperature": 0.0,
+    "max_tokens":  1024
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // REFLECTOR SETTINGS
+  // ──────────────────────────────────────────────────────────
+  "reflector": {
+    "max_tactical_retries":  0,  // Extra turn-level retries on refusal (0 = off)
+    "max_strategic_retries": 0   // Strategy switches before giving up (0 = use planner)
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // ATTACK SETTINGS
+  // ──────────────────────────────────────────────────────────
+  "attack": {
+    "max_attempts": 15,  // Maximum strategy attempts per sample before moving on
+
+    // Multi-target sweep — run_visual_pair.py iterates over all models per sample.
+    // For single-target runs, keep one entry or use --target-model CLI flag.
+    "target_models": [
+      // Gemini 3 family (all verified on OpenRouter as of 2026-05)
+      {
+        "model_name": "google/gemini-3-flash-preview",
+        "provider":   "openai",
+        "api_base":   "https://openrouter.ai/api/v1"
+      },
+      {
+        "model_name": "google/gemini-3-pro-image-preview",
+        "provider":   "openai",
+        "api_base":   "https://openrouter.ai/api/v1"
+      },
+      {
+        "model_name": "google/gemini-3.1-pro-preview",
+        "provider":   "openai",
+        "api_base":   "https://openrouter.ai/api/v1"
+      }
+      // Add more targets here — each gets the full attack phase sequence
+      // { "model_name": "openai/gpt-4o", "provider": "openai", "api_base": "https://openrouter.ai/api/v1" }
+    ]
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // DATA / OUTPUT PATHS
+  // ──────────────────────────────────────────────────────────
+  "data": {
+    "data_dir":               "data",
+    "harmful_behaviors_csv":  "data/200.csv"  // Default benchmark (200 rows)
+  },
+  "output": {
+    "output_dir": "output"  // Per-run JSONL files written here (gitignored)
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // LOGGING
+  // ──────────────────────────────────────────────────────────
+  "logging": {
+    "log_dir":              "logs",
+    "log_level":            "INFO",
+    "log_to_file":          false,  // Set true to write logs/run.log
+    "log_to_console":       true,
+    "log_sample_rate":      0.0,    // Fraction of samples to verbose-log (0.0 = off)
+    "log_first_n":          0,      // Always verbose-log first N samples (0 = off)
+    "enable_sample_logging": false  // Per-sample detailed log files
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // RATE LIMITING
+  // Tune these when hitting 429s from OpenRouter.
+  // ──────────────────────────────────────────────────────────
+  "rate_limit": {
+    "target_min_interval_seconds":        1.0,   // Min seconds between target calls
+    "target_rate_limit_cooldown_seconds": 45.0,  // Backoff on 429 (seconds)
+    "attempt_cooldown_seconds":           5.0,   // Pause between strategy attempts
+    "target_max_turn_retries":            2       // Retries per turn on transient errors
+
+    // Slower settings for strict rate-limited models (e.g. Gemini 2.5 Flash):
+    // "target_min_interval_seconds":        2.5,
+    // "target_rate_limit_cooldown_seconds": 120.0,
+    // "attempt_cooldown_seconds":           15.0,
+    // "target_max_turn_retries":            3
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // TOKEN BUDGETS
+  // Per-turn max tokens sent to the target model.
+  // Increase turn4_primary if you want longer extraction responses.
+  // ──────────────────────────────────────────────────────────
+  "token_budget": {
+    "turn1":          1600,  // Role/context setup
+    "turn2":          2400,  // Topic seeding
+    "turn3":          3600,  // Payload injection (contains {harm_goal})
+    "turn4_primary":  6000,  // Extraction — keep high for detailed responses
+    "turn4_retry":    5000,  // Retry extraction
+    "repair":         1800,  // Repair turn after weak T3 engagement
+    "summary":         400   // Reflector trajectory summary
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // PROXY (optional)
+  // Set "url" to route traffic through a proxy (e.g. SOCKS5 for restricted networks).
+  // ──────────────────────────────────────────────────────────
+  "proxy": {
+    "url": ""  // e.g. "socks5://127.0.0.1:1080"
+  }
+}

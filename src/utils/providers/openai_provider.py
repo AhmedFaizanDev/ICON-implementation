@@ -108,9 +108,22 @@ class OpenAIProvider(BaseLLMProvider):
         for attempt in range(max_retries + 1):
             try:
                 response = self._client.chat.completions.create(**api_params)
-                
-                # Validate response structure
+
+                # Detect OpenRouter-wrapped provider errors (429s arrive as
+                # successful HTTP responses with empty choices and an error field).
+                _wrapped_error = getattr(response, "error", None)
                 if not response.choices or len(response.choices) == 0:
+                    err_code = None
+                    err_msg = ""
+                    if isinstance(_wrapped_error, dict):
+                        err_code = _wrapped_error.get("code")
+                        err_msg = str(_wrapped_error.get("message", ""))
+                    is_rate_429 = err_code == 429 or "429" in err_msg or "rate" in err_msg.lower() or "quota" in err_msg.lower()
+                    if is_rate_429 and attempt < max_retries:
+                        backoff = min(60.0, 2.0 * (2 ** attempt))
+                        print(f"[RATE_LIMIT] OpenRouter wrapped 429 on {model} (attempt {attempt+1}/{max_retries+1}); sleeping {backoff:.1f}s")
+                        time.sleep(backoff)
+                        continue
                     raise RuntimeError(
                         f"OpenAI API returned empty choices. "
                         f"Response: {response}"
@@ -135,8 +148,28 @@ class OpenAIProvider(BaseLLMProvider):
                 # length: Max tokens reached - retry with reduced max_tokens if content is None/empty
                 # stop: Normal completion - shouldn't have None content, but if it does, might be transient
                 # unknown/None: Unknown reason - might be transient, can retry
+                #
+                # Claude via OpenRouter refusal pattern: finish_reason="stop" + content=None/""
+                # Unlike OpenAI (content_filter), Claude returns empty content with stop reason on refusal.
+                # Detect this: if model name suggests Claude/Anthropic and content is empty + stop, fast-fail.
+                _is_claude_model = any(
+                    x in model.lower() for x in ("claude", "anthropic")
+                )
+                _claude_refusal = (
+                    _is_claude_model
+                    and finish_reason in ("stop", "end_turn")
+                    and (content is None or (isinstance(content, str) and content.strip() == ""))
+                )
                 should_retry = True
-                if finish_reason == "content_filter":
+                if _claude_refusal:
+                    # Claude hard refusal — empty+stop is its content-filter equivalent; never retry.
+                    logger.warning(
+                        f"Claude model {model} returned empty content with finish_reason={finish_reason!r}. "
+                        f"This is a hard refusal (Claude's content-filter equivalent). Not retrying."
+                    )
+                    content = ""  # propagate empty so caller can detect refusal
+                    should_retry = False
+                elif finish_reason == "content_filter":
                     # Content was filtered by safety system - retrying won't help
                     should_retry = False
                     # DEBUG: Log detailed information about the request that triggered content_filter
@@ -237,8 +270,10 @@ class OpenAIProvider(BaseLLMProvider):
                         time.sleep(delay)
                         continue
                     else:
-                        # Don't retry (content_filter or last attempt) - return safe fallback
-                        if not should_retry:
+                        # Don't retry (content_filter / Claude refusal / last attempt)
+                        if _claude_refusal:
+                            pass  # already logged above as Claude hard refusal
+                        elif not should_retry:
                             logger.warning(
                                 f"OpenAI API returned None/empty content for model {model}. "
                                 f"Response finish_reason: {finish_reason}. Returning safe fallback."

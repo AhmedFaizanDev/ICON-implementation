@@ -217,6 +217,9 @@ _CATEGORY_DOCUMENT_PRIORS: Dict[str, Tuple[DocumentTemplate, int]] = {
     "Violence": (DocumentTemplate.MEDICAL_PROTOCOL, 3),
     "Fraud/Scams": (DocumentTemplate.GOV_FORM, 2),
     "Harassment/Discrimination": (DocumentTemplate.AUDIT_REPORT, 2),
+    # New categories
+    "Racial slurs": (DocumentTemplate.RESEARCH_APPENDIX, 2),
+    "Explosives": (DocumentTemplate.MEDICAL_PROTOCOL, 4),
 }
 
 
